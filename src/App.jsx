@@ -2,6 +2,7 @@ import { HashRouter, Route, Routes } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 
+import AuthNotice from './components/common/auth-notice';
 import AuthProvider from './components/common/auth-provider';
 import Header from './components/common/header';
 import ProtectedRoute from './components/common/protected-route';
@@ -21,6 +22,7 @@ function App() {
   return (
     <AuthProvider>
       <HashRouter>
+        <AuthNotice />
         <Header />
         <Box sx={{
           width: '100%',

@@ -11,6 +11,7 @@ import TextField from '@mui/material/TextField';
 import PetsRoundedIcon from '@mui/icons-material/PetsRounded';
 
 import { useAuth } from '../hooks/use-auth';
+import { getAuthErrorMessage, isEmailNotConfirmed } from '../utils/auth-error-message';
 
 const INITIAL_SIGN_UP = { name: '', email: '', password: '', phone: '' };
 
@@ -22,7 +23,7 @@ const INITIAL_SIGN_UP = { name: '', email: '', password: '', phone: '' };
  * <LoginPage />
  */
 function LoginPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resendConfirmation } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [tab, setTab] = useState(0);
@@ -31,6 +32,9 @@ function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** 인증 메일을 다시 보낼 수 있는 이메일 (가입 직후 또는 미인증 로그인 시) */
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
 
   const changeTab = (nextTab) => {
     setTab(nextTab);
@@ -42,13 +46,28 @@ function LoginPage() {
     event.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+    setInfoMessage('');
     try {
       await signIn(loginForm.email, loginForm.password);
       navigate(location.state?.from ?? '/', { replace: true });
-    } catch {
-      setErrorMessage('아이디 또는 비밀번호를 확인해주세요.');
+    } catch (error) {
+      setPendingEmail(isEmailNotConfirmed(error) ? loginForm.email : '');
+      setErrorMessage(getAuthErrorMessage(error, '아이디 또는 비밀번호를 확인해주세요.'));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setIsResending(true);
+    setErrorMessage('');
+    try {
+      await resendConfirmation(pendingEmail);
+      setInfoMessage(`${pendingEmail} 로 인증 메일을 다시 보냈어요. 메일함을 확인해주세요. 📮`);
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, '인증 메일을 보내지 못했어요. 잠시 후 다시 시도해주세요.'));
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -62,16 +81,22 @@ function LoginPage() {
     setErrorMessage('');
     try {
       const result = await signUp(signUpForm);
+      /** 이미 가입된 이메일이면 Supabase 는 오류 대신 identities 가 빈 user 를 돌려준다 */
+      if (result.user && result.user.identities?.length === 0) {
+        setErrorMessage('이미 가입된 이메일이에요. 로그인해주세요.');
+        return;
+      }
       setSignUpForm(INITIAL_SIGN_UP);
       if (result.session) {
         navigate('/', { replace: true });
         return;
       }
       setLoginForm((prev) => ({ ...prev, email: signUpForm.email }));
+      setPendingEmail(signUpForm.email);
       setTab(0);
-      setInfoMessage('회원가입 완료! 이메일 인증 후 로그인해주세요. 🐾');
+      setInfoMessage(`회원가입 완료! ${signUpForm.email} 로 보낸 인증 메일의 링크를 누르면 바로 로그인돼요. 🐾`);
     } catch (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(getAuthErrorMessage(error, error.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -97,6 +122,14 @@ function LoginPage() {
 
         { errorMessage && <Alert severity="error" sx={{ mb: 2 }}>{ errorMessage }</Alert> }
         { infoMessage && <Alert severity="success" sx={{ mb: 2 }}>{ infoMessage }</Alert> }
+        { tab === 0 && pendingEmail && (
+          <Box sx={{ mb: 2, textAlign: 'center', fontSize: '0.875rem', color: 'text.secondary' }}>
+            인증 메일을 못 받으셨나요?{ ' ' }
+            <Button size="small" onClick={ handleResend } disabled={ isResending }>
+              인증 메일 다시 보내기
+            </Button>
+          </Box>
+        ) }
 
         { tab === 0 ? (
           <Box component="form" onSubmit={ handleLogin }>
